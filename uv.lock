@@ -44,15 +44,15 @@ wheels = [
 ]
 
 [[package]]
-name = "ping-game-theory-25"
-version = "0.1.3"
+name = "ping-game-theory"
+version = "0.1.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/4f/c8ff4bce4841ff76d5235587f33d39153dfbaa54b307765ff7a588921caa/ping_game_theory_25-0.1.3.tar.gz", hash = "sha256:44dfbf6df21b710f54d11623a9c8aab727f8f5170781ab3f9fe4949d1f5cee42", size = 2679, upload-time = "2025-11-06T03:44:12.596Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/bb/367afdb397a54207a582afa21765cdd3cb6a38f01b0a05d8bf7b6b920ad3/ping_game_theory-0.1.4.tar.gz", hash = "sha256:c983053bebf6acb6a948a1561113b70ed2d97e227b813fc06ac4ab91d22bd2e5", size = 2986, upload-time = "2025-11-06T14:13:38.088Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/78/aa5f2e44ae4b8a67dcdd4717e8e47e4687365168d90c1b6d53954857689a/ping_game_theory_25-0.1.3-py3-none-any.whl", hash = "sha256:dda7e017546589492b2056d10e008d74098898059404f851ccdc588693be2d84", size = 4100, upload-time = "2025-11-06T03:44:11.277Z" },
+    { url = "https://files.pythonhosted.org/packages/98/23/4924b2168319617797d526b81365271c499e4e1c41ec99db5fef8d7597e5/ping_game_theory-0.1.4-py3-none-any.whl", hash = "sha256:9fb692d6ab2ea0eafad5a37ce5c89014d3c452bc68c6453cf2ec16828c0cda24", size = 4312, upload-time = "2025-11-06T14:13:36.918Z" },
 ]
 
 [[package]]
@@ -61,7 +61,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "binarytree" },
-    { name = "ping-game-theory-25" },
+    { name = "ping-game-theory" },
     { name = "tabulate" },
     { name = "tqdm" },
 ]
@@ -69,7 +69,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "binarytree", specifier = ">=6.5.1" },
-    { name = "ping-game-theory-25", specifier = ">=0.1.3" },
+    { name = "ping-game-theory", specifier = ">=0.1.4" },
     { name = "tabulate", specifier = ">=0.9.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
 ]

@@ -2,7 +2,10 @@ from tabulate import tabulate
 from os import listdir, getcwd
 from binarytree import Node
 from importlib import import_module
-from ping_game_theory_25 import HistoryEntry, Move
+from ping_game_theory import HistoryEntry, Move
+from time import time
+from typing import Final
+from random import seed
 
 CLASS_NAME: str = "Bot"
 
@@ -11,12 +14,26 @@ scores: dict[
 ] = {}  # contains key as the file_name and value a dict of keys "wins","losses","points"
 
 
-def match(p1: str, p2: str) -> str:
+ROUNDS: Final[int] = 10_000
+PAYOFFS: Final[dict] = {
+    Move.COOPERATE: {
+        Move.COOPERATE: (3, 3),  # Mutual cooperation
+        Move.DEFECT: (0, 5),  # Sucker's payoff
+    },
+    Move.DEFECT: {
+        Move.COOPERATE: (5, 0),  # Temptation to defect
+        Move.DEFECT: (1, 1),  # Mutual defection
+    },
+}
+
+
+def match(p1: str, p2: str) -> tuple[str, int, int]:
+    print(f"{p1} vs {p2}")
+
     p1_cls = getattr(import_module(p1), CLASS_NAME)
     p2_cls = getattr(import_module(p2), CLASS_NAME)
-
-    p1_obj = p1_cls()
-    p2_obj = p2_cls()
+    total_score_self: int = 0
+    total_score_opp: int = 0
 
     try:
         strategy = p1_cls()
@@ -29,8 +46,10 @@ def match(p1: str, p2: str) -> str:
 
     history_self: list[HistoryEntry] = []
     history_opp: list[HistoryEntry] = []
-    print("Testing against RandomStrategy")
-    start_time = time.time()
+
+    print(f"{strategy.strategy_name} vs {opponent.strategy_name}")
+
+    start_time = time()
     try:
         move_self = strategy.begin()
         move_opp = opponent.begin()
@@ -38,13 +57,14 @@ def match(p1: str, p2: str) -> str:
         raise AssertionError(f"begin() raised an exception: {e}")
     if not isinstance(move_self, Move):
         raise AssertionError(f"begin() returned invalid type: {type(move_self)}")
+    # Record first round
     history_self.append(HistoryEntry(self=move_self, other=move_opp))
     history_opp.append(HistoryEntry(self=move_opp, other=move_self))
-    for _ in tqdm(range(self.ROUNDS - 1), desc="Running rounds"):
-        if time.time() - start_time > StrategyTester.TIMEOUT_SECONDS:
-            raise TimeoutError(
-                f"Execution exceeded timeout of {StrategyTester.TIMEOUT_SECONDS} seconds"
-            )
+    # Calculate payoffs for first round
+    payoff_self, payoff_opp = PAYOFFS[move_self][move_opp]
+    total_score_self += payoff_self
+    total_score_opp += payoff_opp
+    for _ in tqdm(range(ROUNDS - 1), desc="Running rounds"):
         try:
             move_self = strategy.turn(tuple(history_self))
         except Exception as exc:
@@ -52,40 +72,30 @@ def match(p1: str, p2: str) -> str:
         move_opp = opponent.turn(tuple(history_opp))
         if not isinstance(move_self, Move):
             raise AssertionError(f"turn() returned invalid type: {type(move_self)}")
+        # Record moves
         history_self.append(HistoryEntry(self=move_self, other=move_opp))
         history_opp.append(HistoryEntry(self=move_opp, other=move_self))
-        if (
-            move_self == Move.ROCK
-            and move_opp == Move.SCISSOR
-            or move_self == Move.PAPER
-            and move_opp == Move.ROCK
-            or move_self == Move.SCISSOR
-            and move_opp == Move.ROCK
-        ):
-            self.wins += 1
-        elif move_self != move_opp:
-            self.losses += 1
-        else:
-            self.draws += 1
-    total_time = time.time() - start_time
-    print(f"✅ PASS: {StrategyTester.ROUNDS} rounds in {total_time:.2f} seconds")
-    print(f"{self.wins} Wins, {self.losses} Losses, {self.draws} Draws")
+        payoff_self, payoff_opp = PAYOFFS[move_self][move_opp]
+        total_score_self += payoff_self
+        total_score_opp += payoff_opp
+        seed(None)
+    total_time = time() - start_time
+    avg_score_self = total_score_self / ROUNDS
+    avg_score_opp = total_score_opp / ROUNDS
+    print(f"✅ PASS: {ROUNDS} rounds in {total_time:.2f} seconds")
+    print(f"Strategy Total Score: {total_score_self} (avg: {avg_score_self:.2f})")
+    print(f"Opponent Total Score: {total_score_opp} (avg: {avg_score_opp:.2f})")
 
-    return p1
+    # Draw
+    if abs(total_score_self - total_score_opp) <= 5:
+        return ("", total_score_self, total_score_opp)
 
-
-def update_score(res: str, p1: str, p2: str) -> None:
-    if res == p1:
-        scores[p1]["wins"] += 1
-        scores[p1]["points"] += 3
-        scores[p2]["losses"] += 1
-    elif res == p2:
-        scores[p2]["wins"] += 1
-        scores[p2]["points"] += 3
-        scores[p1]["losses"] += 1
+    if total_score_self > total_score_opp:
+        winner = p1
     else:
-        scores[p1]["points"] += 1
-        scores[p2]["points"] += 1
+        winner = p2
+
+    return (winner, total_score_self, total_score_opp)
 
 
 def run_tournament(strategies: list[str]) -> None:
@@ -94,7 +104,18 @@ def run_tournament(strategies: list[str]) -> None:
             if p1 == p2:
                 continue
 
-            update_score(match(p1, p2), p1, p2)
+            try:
+                res = match(p1, p2)
+            except Exception as e:
+                print(f"Exception raised: -\n{e}")
+
+            if res[0] == p1:
+                scores[p1]["wins"] += 1
+            elif res[0] == p2:
+                scores[p2]["wins"] += 1
+
+            scores[p1]["points"] += res[1]
+            scores[p2]["points"] += res[2]
 
     scoreboard = []
     i = 0
@@ -121,19 +142,36 @@ def run_tournament(strategies: list[str]) -> None:
 
 
 def run_playoffs() -> None:
-    (first, second, third, fourth) = list(scores.keys())[:4]
+    (first, second, third, fourth) = map(
+        lambda fname: fname.split("_")[0], list(scores.keys())[:4]
+    )
 
-    first_r2: str = match(first, second)
-    second_r2: str = match(third, fourth)
-    winner: str = match(first_r2, second_r2)
+    try:
+        q1 = match(first, second)[0]
+    except Exception as e:
+        print(f"Exception raised: -\n{e}")
 
-    root = Node(winner)
-    root.left = Node(first_r2)
-    root.right = Node(second_r2)
-    root.left.left = Node(first)
-    root.left.right = Node(second)
-    root.right.left = Node(third)
-    root.right.right = Node(fourth)
+    if q1 == first:
+        loser = second
+    else:
+        loser = first
+
+    try:
+        eliminator = match(third, fourth)[0]
+        q2 = match(loser, eliminator)[0]
+        final = match(q1, q2)[0]
+    except Exception as e:
+        print(f"Exception raised: -\n{e}")
+
+    root = Node(final)
+    root.left = Node(q1)
+    root.left.left = first
+    root.left.right = second
+    root.right = Node(q2)
+    root.right.left = loser
+    root.right.right = Node(eliminator)
+    root.right.right.left = third
+    root.right.right.right = fourth
 
     print(root)
 
