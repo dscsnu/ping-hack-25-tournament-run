@@ -1,11 +1,15 @@
-from tabulate import tabulate
-from os import listdir, getcwd
+import sys
+from pathlib import Path
+
 from binarytree import Node
+from tabulate import tabulate
+import matplotlib.pyplot as plt
 from importlib import import_module
 from ping_game_theory import HistoryEntry, Move
 from time import time
 from typing import Final
 from random import seed
+from tqdm import tqdm
 
 CLASS_NAME: str = "Bot"
 
@@ -98,16 +102,40 @@ def match(p1: str, p2: str) -> tuple[str, int, int]:
     return (winner, total_score_self, total_score_opp)
 
 
-def run_tournament(strategies: list[str]) -> None:
+def resolve_draw(p1: str, p2: str) -> str:
+    data_p1 = scores.get(p1)
+    data_p2 = scores.get(p2)
+
+    if data_p1 is None or data_p2 is None:
+        raise RuntimeError(
+            "Cannot resolve draw because one or both strategies are missing from "
+            f"the scoreboard: {p1}, {p2}."
+        )
+
+    points_p1 = data_p1["points"]
+    points_p2 = data_p2["points"]
+    if points_p1 != points_p2:
+        return p1 if points_p1 > points_p2 else p2
+
+    wins_p1 = data_p1["wins"]
+    wins_p2 = data_p2["wins"]
+    if wins_p1 != wins_p2:
+        return p1 if wins_p1 > wins_p2 else p2
+
+    # Final fallback: alphabetical order for deterministic choice.
+    return min(p1, p2)
+
+
+def run_tournament(strategies: list[str]) -> list[list[int | str]]:
     for p1 in strategies:
         for p2 in strategies:
             if p1 == p2:
                 continue
-
             try:
                 res = match(p1, p2)
             except Exception as e:
-                print(f"Exception raised: -\n{e}")
+                print(f"Exception raised while matching {p1} vs {p2}:\n{e}")
+                raise
 
             if res[0] == p1:
                 scores[p1]["wins"] += 1
@@ -117,23 +145,59 @@ def run_tournament(strategies: list[str]) -> None:
             scores[p1]["points"] += res[1]
             scores[p2]["points"] += res[2]
 
-    scoreboard = []
-    i = 0
-    for item in scores.items():
-        scoreboard.append([])
-        scoreboard[i].append(item[0])
-        scoreboard[i].append(item[1]["wins"])
-        scoreboard[i].append(item[1]["losses"])
-        scoreboard[i].append(item[1]["points"])
-        i += 1
+    sorted_scores = sorted(
+        scores.items(), key=lambda item: item[1]["points"], reverse=True
+    )
+    scoreboard = [
+        [rank, name, data["wins"], data["points"]]
+        for rank, (name, data) in enumerate(sorted_scores, start=1)
+    ]
 
     print(
         tabulate(
             scoreboard,
-            headers=["Contestant", "Wins", "Losses", "Points"],
+            headers=["Rank", "Contestant", "Wins", "Points"],
             tablefmt="grid",
         )
     )
+
+    return scoreboard
+
+
+def generate_round_graph(scoreboard: list[list[int | str]], round_label: str) -> None:
+    contestants = [row[1] for row in scoreboard]
+    points = [row[3] for row in scoreboard]
+
+    if not contestants:
+        print(f"No data available to plot for {round_label}.")
+        return
+
+    width = max(8.0, len(contestants) * 0.6)
+    plt.figure(figsize=(width, 6))
+    bars = plt.bar(contestants, points, color="#4C72B0")
+    plt.xlabel("Contestant")
+    plt.ylabel("Points")
+    plt.title(f"Tournament {round_label} Points")
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+
+    for bar, point in zip(bars, points):
+        plt.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height(),
+            str(point),
+            ha="center",
+            va="bottom",
+            fontsize=8,
+        )
+
+    output_path = (
+        Path.cwd()
+        / f"tournament_{round_label.replace(' ', '_').lower()}_points.png"
+    )
+    plt.savefig(output_path, dpi=200)
+    plt.close()
+    print(f"Saved {round_label} points chart to {output_path}")
 
     # with open("ping_hack_25_results.txt", "w") as f:
     #     f.write(to_save)
@@ -141,61 +205,43 @@ def run_tournament(strategies: list[str]) -> None:
     #     f.write("-" * 30)
 
 
-def run_playoffs() -> None:
-    (first, second, third, fourth) = map(
-        lambda fname: fname.split("_")[0], list(scores.keys())[:4]
-    )
-
-    try:
-        q1 = match(first, second)[0]
-    except Exception as e:
-        print(f"Exception raised: -\n{e}")
-
-    if q1 == first:
-        loser = second
-    else:
-        loser = first
-
-    try:
-        eliminator = match(third, fourth)[0]
-        q2 = match(loser, eliminator)[0]
-        final = match(q1, q2)[0]
-    except Exception as e:
-        print(f"Exception raised: -\n{e}")
-
-    root = Node(final)
-    root.left = Node(q1)
-    root.left.left = first
-    root.left.right = second
-    root.right = Node(q2)
-    root.right.left = loser
-    root.right.right = Node(eliminator)
-    root.right.right.left = third
-    root.right.right.right = fourth
-
-    print(root)
-
-
 if __name__ == "__main__":
     # Load strategies' data
 
     strategies: list[str] = []  # contains the name of each file
-    submission_files: list[str] = list(
-        filter(lambda fname: fname[-2:] == "py", listdir(getcwd()))
+    submissions_dir = Path.cwd() / "submissions"
+
+    if not submissions_dir.exists():
+        raise FileNotFoundError(f"Expected submissions directory at {submissions_dir}")
+
+    if str(submissions_dir) not in sys.path:
+        sys.path.insert(0, str(submissions_dir))
+
+    submission_files = sorted(
+        (
+            path
+            for path in submissions_dir.iterdir()
+            if path.suffix == ".py" and path.name != "__init__.py"
+        ),
+        key=lambda path: path.name.lower(),
     )
-    for submission in submission_files:
-        net_id = submission.strip().lower()
-        strategies.append(net_id)
-        scores[net_id] = {"wins": 0, "losses": 0, "points": 0}
+
+    if not submission_files:
+        raise RuntimeError(f"No Python submissions found in {submissions_dir}")
+
+    for submission_path in submission_files:
+        module_name = submission_path.stem
+        strategies.append(module_name)
+        scores[module_name] = {"wins": 0, "losses": 0, "points": 0}
 
     print("Tournament Round 1\n")
-    run_tournament(strategies)
-    print("Tournament Round 2\n")
-    run_tournament(strategies)
+    round1_scoreboard = run_tournament(strategies)
+    generate_round_graph(round1_scoreboard, "Round 1")
+
+    print("Final Round\n")
+    round2_scoreboard = run_tournament(strategies)
+    generate_round_graph(round2_scoreboard, "Final Round")
 
     scores = dict(
         sorted(scores.items(), key=lambda item: item[1]["points"], reverse=True)
     )
-
-    print("Playoffs: -\n")
-    run_playoffs()
